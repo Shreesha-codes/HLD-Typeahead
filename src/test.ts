@@ -1,5 +1,7 @@
 import { Trie } from './trie';
 import { generateMockQueries } from './generator';
+import { ConsistentHashRing } from './consistentHashRing';
+import { CacheNode } from './cacheNode';
 
 function assert(condition: boolean, message: string) {
   if (!condition) {
@@ -60,6 +62,47 @@ function runTests() {
   const mockDataset = generateMockQueries(1000);
   assert(mockDataset.length === 1000, 'Generator should produce exact count requested');
   assert(mockDataset[0].count >= mockDataset[999].count, 'Mock dataset should be pre-sorted descending by count');
+
+  // Test 7: Consistent Hashing Ring test
+  console.log('\nTesting Consistent Hashing Ring...');
+  const ring = new ConsistentHashRing(50);
+  const nodes = ['node-1', 'node-2', 'node-3', 'node-4'];
+  nodes.forEach(n => ring.addNode(n));
+
+  const target1 = ring.getNode('hello');
+  const target2 = ring.getNode('hello');
+  assert(target1 === target2, 'Same key should consistently route to same node');
+
+  // Check key distribution across nodes to prove virtual nodes work
+  const distribution: { [node: string]: number } = {};
+  nodes.forEach(n => { distribution[n] = 0; });
+
+  for (let i = 0; i < 2000; i++) {
+    const node = ring.getNode(`query-string-prefix-${i}`);
+    distribution[node]++;
+  }
+
+  console.log('Key Distribution across 4 nodes for 2000 keys:');
+  nodes.forEach(n => {
+    const share = ((distribution[n] / 2000) * 100).toFixed(1);
+    console.log(`  - ${n}: ${distribution[n]} keys (${share}%)`);
+    assert(distribution[n] > 300, `Node ${n} should receive a fair share of keys (got ${distribution[n]})`);
+  });
+
+  // Test 8: Cache Node with TTL
+  console.log('\nTesting Cache Node Expiration...');
+  const cacheNode = new CacheNode('test-node');
+  cacheNode.set('key-1', { data: 'test-value' }, 50); // 50ms TTL
+
+  assert(cacheNode.get<{ data: string }>('key-1')?.data === 'test-value', 'Cache should hit immediately after setting');
+
+  // Force synchronous sleep to wait for TTL expiration
+  const start = Date.now();
+  while (Date.now() - start < 70) {
+    // wait 70ms
+  }
+
+  assert(cacheNode.get('key-1') === null, 'Cache should return null (MISS) after TTL expiration');
 
   console.log('\nAll unit tests passed successfully!');
 }
