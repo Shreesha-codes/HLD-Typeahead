@@ -1,3 +1,5 @@
+import { Trie } from './trie';
+
 const adjectives = [
   'best', 'top', 'free', 'online', 'easy', 'simple', 'fast', 'quick', 'cheap', 'latest',
   'new', 'cool', 'smart', 'secure', 'modern', 'awesome', 'amazing', 'perfect', 'local', 'global',
@@ -19,80 +21,74 @@ const suffixes = [
   'checklist', 'tricks', 'hacks', 'questions', 'answers', 'support'
 ];
 
+const queryTemplates: (() => string)[] = [
+  () => getRandomElement(nouns),
+  () => `${getRandomElement(adjectives)} ${getRandomElement(nouns)}`,
+  () => `${getRandomElement(nouns)} ${getRandomElement(suffixes)}`,
+  () => `${getRandomElement(adjectives)} ${getRandomElement(nouns)} ${getRandomElement(suffixes)}`,
+  () => `${getRandomElement(nouns)} vs ${getRandomElement(nouns)}`,
+  () => `${getRandomElement(adjectives)} ${getRandomElement(nouns)} vs ${getRandomElement(adjectives)} ${getRandomElement(nouns)}`
+];
+
+function getRandomElement<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
 /**
  * Generates a realistic mock dataset of queries with frequencies.
- * Uses a Zipfian/power-law distribution for counts to mimic real-world search behavior.
+ * Keeps memory low by generating and returning the dataset directly.
  */
 export function generateMockQueries(count: number = 100000): { query: string; count: number }[] {
   const dataset: { query: string; count: number }[] = [];
   const seenQueries = new Set<string>();
 
-  // Ensure we can generate enough unique queries
-  // Max possible unique combinations = adjectives.length * nouns.length * suffixes.length
-  // 30 * 50 * 30 = 45,000
-  // To reach 100,000+, we can use variations:
-  // - "noun"
-  // - "adj noun"
-  // - "noun suffix"
-  // - "adj noun suffix"
-  // Let's generate them programmatically.
-
-  const queryTemplates: (() => string)[] = [
-    // Template 1: noun
-    () => getRandomElement(nouns),
-    // Template 2: adj + noun
-    () => `${getRandomElement(adjectives)} ${getRandomElement(nouns)}`,
-    // Template 3: noun + suffix
-    () => `${getRandomElement(nouns)} ${getRandomElement(suffixes)}`,
-    // Template 4: adj + noun + suffix
-    () => `${getRandomElement(adjectives)} ${getRandomElement(nouns)} ${getRandomElement(suffixes)}`,
-    // Template 5: noun + "vs" + noun
-    () => `${getRandomElement(nouns)} vs ${getRandomElement(nouns)}`,
-    // Template 6: adj + noun + "vs" + adj + noun
-    () => `${getRandomElement(adjectives)} ${getRandomElement(nouns)} vs ${getRandomElement(adjectives)} ${getRandomElement(nouns)}`
-  ];
-
-  function getRandomElement<T>(arr: T[]): T {
-    return arr[Math.floor(Math.random() * arr.length)];
-  }
-
-  // First generate unique query strings
   let attempts = 0;
-  const maxAttempts = count * 10; // Avoid infinite loop if we hit limit
+  const maxAttempts = count * 10;
   while (seenQueries.size < count && attempts < maxAttempts) {
     attempts++;
-    const template = getRandomElement(queryTemplates);
-    const query = template();
+    const query = getRandomElement(queryTemplates)();
     if (!seenQueries.has(query)) {
       seenQueries.add(query);
     }
   }
 
-  // Convert to array and assign frequencies using Zipf's Law: count ~ C / rank^alpha
   const queryList = Array.from(seenQueries);
-  // Shuffle to randomize which phrases get high ranks
-  shuffleArray(queryList);
-
-  const C = 5_000_000; // Constant factor
-  const alpha = 0.75;  // Zipf parameter
+  const C = 5_000_000;
+  const alpha = 0.75;
 
   for (let i = 0; i < queryList.length; i++) {
-    const rank = i + 1;
-    // Calculate realistic search volume
-    const searchVolume = Math.max(1, Math.floor(C / Math.pow(rank, alpha)));
     dataset.push({
       query: queryList[i],
-      count: searchVolume
+      count: Math.max(1, Math.floor(C / Math.pow(i + 1, alpha)))
     });
   }
 
-  // Sort descending by count to represent the actual rank order in the final output
-  return dataset.sort((a, b) => b.count - a.count);
+  return dataset;
 }
 
-function shuffleArray(array: any[]) {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
+/**
+ * Memory-optimized direct ingestion helper.
+ * Generates queries on-the-fly and inserts them directly into the Trie
+ * to avoid allocating massive temporary arrays, preventing Out-Of-Memory (OOM) crashes.
+ */
+export function ingestQueriesDirectly(trie: Trie, count: number): void {
+  const seenQueries = new Set<string>();
+  const C = 5_000_000;
+  const alpha = 0.75;
+
+  let i = 0;
+  let attempts = 0;
+  const maxAttempts = count * 10;
+
+  while (i < count && attempts < maxAttempts) {
+    attempts++;
+    const query = getRandomElement(queryTemplates)();
+    if (!seenQueries.has(query)) {
+      seenQueries.add(query);
+      const rank = i + 1;
+      const searchVolume = Math.max(1, Math.floor(C / Math.pow(rank, alpha)));
+      trie.insert(query, searchVolume);
+      i++;
+    }
   }
 }

@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { Trie } from './trie';
-import { generateMockQueries } from './generator';
+import { generateMockQueries, ingestQueriesDirectly } from './generator';
 import { ConsistentHashRing } from './consistentHashRing';
 import { CacheNode } from './cacheNode';
 import { SearchBatchWriter } from './batchWriter';
@@ -18,25 +18,17 @@ const trie = new Trie(60000);
 
 const DATASET_SIZE = 100000;
 
-console.log(`Generating ${DATASET_SIZE.toLocaleString()} mock queries...`);
-const generationStart = performance.now();
-const mockData = generateMockQueries(DATASET_SIZE);
-const generationEnd = performance.now();
-console.log(`Generated mock data in ${(generationEnd - generationStart).toFixed(2)}ms`);
-
-console.log(`Ingesting data into Trie...`);
+console.log(`Generating & Ingesting ${DATASET_SIZE.toLocaleString()} mock queries directly...`);
 const startMemory = process.memoryUsage().heapUsed;
 const ingestionStart = performance.now();
 
-for (const item of mockData) {
-  trie.insert(item.query, item.count);
-}
+ingestQueriesDirectly(trie, DATASET_SIZE);
 
 const ingestionEnd = performance.now();
 const endMemory = process.memoryUsage().heapUsed;
 const memoryUsedMB = ((endMemory - startMemory) / 1024 / 1024).toFixed(2);
 
-console.log(`Successfully ingested ${mockData.length.toLocaleString()} queries.`);
+console.log(`Successfully generated and ingested queries.`);
 console.log(`Ingestion Time: ${(ingestionEnd - ingestionStart).toFixed(2)}ms`);
 console.log(`Approx. In-Memory Trie Heap Usage: ${memoryUsedMB} MB`);
 
