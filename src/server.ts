@@ -12,9 +12,9 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Initialize Trie and Ingest Mock Data
+// Initialize Trie (with 1 minute half-life for trending searches) and Ingest Mock Data
 console.log('=== Search Typeahead System Initializing ===');
-const trie = new Trie();
+const trie = new Trie(60000);
 
 const DATASET_SIZE = 100000;
 
@@ -54,14 +54,35 @@ for (const nodeId of NODE_IDS) {
   ring.addNode(nodeId);
 }
 
-const CACHE_TTL_MS = 30000; // 30 seconds Time-To-Live
+const CACHE_TTL_MS = 5000; // 5 seconds Time-To-Live (low TTL for dynamic trending updates)
 console.log(`Caching layer initialized with nodes: ${NODE_IDS.join(', ')} (TTL: ${CACHE_TTL_MS / 1000}s)`);
 
 // ============================================
 // Setup Batch Writes Layer
 // ============================================
 console.log('Initializing Batch Writes Layer...');
-const batchWriter = new SearchBatchWriter(trie, 50, 5000); // Max capacity 50 unique queries, 5s interval
+const batchWriter = new SearchBatchWriter(trie, 50, 5000, (flushedQueries: string[]) => {
+  // Proactive Cache Invalidation:
+  // For each query updated, evict all its prefixes from the consistent hashing cache nodes
+  console.log(`[Cache Invalidator] Evicting cached prefixes for ${flushedQueries.length} flushed queries...`);
+  
+  for (const query of flushedQueries) {
+    const normalized = trie.normalize(query);
+    // Loop through all prefixes (e.g. for "best", invalidate "b", "be", "bes", "best")
+    for (let len = 1; len <= normalized.length; len++) {
+      const prefix = normalized.substring(0, len);
+      const nodeId = ring.getNode(prefix);
+      const cacheNode = cacheNodes.get(nodeId);
+      if (cacheNode) {
+        cacheNode.delete(prefix);
+      }
+    }
+    // Also invalidate the root empty prefix cache
+    for (const nodeId of NODE_IDS) {
+      cacheNodes.get(nodeId)?.delete('');
+    }
+  }
+});
 console.log('Batch Writes Layer initialized (Capacity: 50 unique queries, Interval: 5s)');
 console.log('============================================\n');
 

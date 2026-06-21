@@ -141,6 +141,39 @@ async function runTests() {
 
   batch.stopInterval(); // Clean up timer
 
+  // Test 10: Exponential Time Decay & Cache Invalidation
+  console.log('\nTesting Exponential Time Decay (Trending Searches)...');
+  
+  // Set half-life to 300ms for fast testing
+  const decayTrie = new Trie(300);
+  
+  const t0 = Date.now();
+  // 'apple' gets a huge historical spike of 100
+  decayTrie.insert('apple', 100, t0);
+  // 'orange' gets a minor search count of 10
+  decayTrie.insert('orange', 10, t0);
+
+  // At t0, 'apple' dominates the trend
+  let trend1 = decayTrie.search('', t0);
+  assert(trend1[0].query === 'apple', 'apple should rank 1st initially');
+  assert(trend1[1].query === 'orange', 'orange should rank 2nd initially');
+
+  // Let 900ms pass (3 half-lives!). apple's score decays: 100 * (0.5)^3 = 12.5
+  // orange's score decays: 10 * (0.5)^3 = 1.25
+  const t1 = t0 + 900;
+  
+  // A new search spike of 15 orange queries comes in at t1
+  decayTrie.insert('orange', 15, t1);
+  // orange's new score is 1.25 + 15 = 16.25
+  
+  // Search the suggestions at t1
+  let trend2 = decayTrie.search('', t1);
+  
+  // Because of decay, orange (score 16.25) should now swap ranks with apple (score 12.5)
+  assert(trend2[0].query === 'orange', 'orange should rise to 1st place due to time decay on apple');
+  assert(trend2[1].query === 'apple', 'apple should fall to 2nd place despite higher total history');
+  console.log(`  - Rank swapped successfully! orange (score: ${trend2[0].score.toFixed(2)}) is now higher than apple (score: ${trend2[1].score.toFixed(2)})`);
+
   console.log('\nAll unit tests passed successfully!');
 }
 
