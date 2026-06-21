@@ -87,6 +87,7 @@ header p {
 
 .search-section {
   position: relative;
+  z-index: 2;
   background: var(--bg-card);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);

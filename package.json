@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc",
     "start": "ts-node src/server.ts",
-    "test": "ts-node src/test.ts"
+    "test": "ts-node src/test.ts",
+    "telemetry": "ts-node src/telemetry.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",
