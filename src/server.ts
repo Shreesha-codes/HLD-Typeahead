@@ -4,6 +4,7 @@ import { Trie } from './trie';
 import { generateMockQueries } from './generator';
 import { ConsistentHashRing } from './consistentHashRing';
 import { CacheNode } from './cacheNode';
+import { SearchBatchWriter } from './batchWriter';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -55,6 +56,13 @@ for (const nodeId of NODE_IDS) {
 
 const CACHE_TTL_MS = 30000; // 30 seconds Time-To-Live
 console.log(`Caching layer initialized with nodes: ${NODE_IDS.join(', ')} (TTL: ${CACHE_TTL_MS / 1000}s)`);
+
+// ============================================
+// Setup Batch Writes Layer
+// ============================================
+console.log('Initializing Batch Writes Layer...');
+const batchWriter = new SearchBatchWriter(trie, 50, 5000); // Max capacity 50 unique queries, 5s interval
+console.log('Batch Writes Layer initialized (Capacity: 50 unique queries, Interval: 5s)');
 console.log('============================================\n');
 
 // API Endpoint: GET /suggest
@@ -133,7 +141,9 @@ app.get('/cache/debug', (req: Request, res: Response) => {
 // API Endpoint: POST /search
 app.post('/search', (req: Request, res: Response) => {
   const query = req.body.q || req.body.query || '';
-  console.log(`[Search Request] Query: "${query}"`);
+  if (query) {
+    batchWriter.addSearch(query);
+  }
   return res.json({ message: 'Searched', query });
 });
 

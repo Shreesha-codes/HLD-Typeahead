@@ -2,6 +2,7 @@ import { Trie } from './trie';
 import { generateMockQueries } from './generator';
 import { ConsistentHashRing } from './consistentHashRing';
 import { CacheNode } from './cacheNode';
+import { SearchBatchWriter } from './batchWriter';
 
 function assert(condition: boolean, message: string) {
   if (!condition) {
@@ -10,7 +11,7 @@ function assert(condition: boolean, message: string) {
   console.log(`✓ ${message}`);
 }
 
-function runTests() {
+async function runTests() {
   console.log('Running Search Typeahead Trie tests...\n');
 
   // Test 1: Basic Trie Insertion & Search
@@ -104,13 +105,48 @@ function runTests() {
 
   assert(cacheNode.get('key-1') === null, 'Cache should return null (MISS) after TTL expiration');
 
+  // Test 9: Batch Writer
+  console.log('\nTesting SearchBatchWriter...');
+  const testTrie = new Trie();
+  testTrie.insert('iphone', 10);
+  
+  // Set batch writer with max capacity 3 unique items, 100ms interval
+  const batch = new SearchBatchWriter(testTrie, 3, 100);
+
+  // Submit searches
+  batch.addSearch('iphone');
+  batch.addSearch('iphone');
+  batch.addSearch('macbook');
+  
+  assert(batch.getBufferSize() === 2, 'Buffer should contain 2 unique items (iphone, macbook)');
+  assert(testTrie.getWordCount('iphone') === 10, 'Trie count should not be updated yet (still 10)');
+
+  // Submit 3rd unique item -> should trigger immediate capacity-based flush
+  batch.addSearch('ipad');
+  
+  assert(batch.getBufferSize() === 0, 'Buffer should have flushed and be empty');
+  assert(testTrie.getWordCount('iphone') === 12, 'Trie count should be updated to 12 (10 + 2 from buffer)');
+  assert(testTrie.getWordCount('macbook') === 1, 'Trie count for macbook should be 1');
+  assert(testTrie.getWordCount('ipad') === 1, 'Trie count for ipad should be 1');
+
+  // Test interval-based flush
+  batch.addSearch('iphone');
+  assert(batch.getBufferSize() === 1, 'Buffer size should be 1');
+  
+  // Wait 150ms for interval flush asynchronously to yield the thread
+  await new Promise(resolve => setTimeout(resolve, 150));
+
+  assert(batch.getBufferSize() === 0, 'Buffer should have flushed automatically on timer interval');
+  assert(testTrie.getWordCount('iphone') === 13, 'Trie count should be updated to 13');
+
+  batch.stopInterval(); // Clean up timer
+
   console.log('\nAll unit tests passed successfully!');
 }
 
-try {
-  runTests();
+runTests().then(() => {
   process.exit(0);
-} catch (error: any) {
+}).catch((error: any) => {
   console.error('\nTest execution failed:', error.message);
   process.exit(1);
-}
+});
